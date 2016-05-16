@@ -52,8 +52,7 @@ import org.apache.parquet.schema.MessageType;
 public class ParquetProperties {
 
   public enum WriterVersion {
-    PARQUET_1_0 ("v1"),
-    PARQUET_2_0 ("v2");
+    PARQUET_1_0("v1"), PARQUET_2_0("v2");
 
     private final String shortName;
 
@@ -67,26 +66,33 @@ public class ParquetProperties {
           return v;
         }
       }
-      // Throws IllegalArgumentException if name does not exact match with enum name
+      // Throws IllegalArgumentException if name does not exact match with enum
+      // name
       return WriterVersion.valueOf(name);
     }
   }
+
   private final int dictionaryPageSizeThreshold;
   private final WriterVersion writerVersion;
   private final boolean enableDictionary;
+  private final boolean useSingleCharDictioanry;
 
   public ParquetProperties(int dictPageSize, WriterVersion writerVersion, boolean enableDict) {
+    this(dictPageSize, writerVersion, enableDict,false);
+  }
+
+  public ParquetProperties(int dictPageSize, WriterVersion writerVersion, boolean enableDict, boolean useSingleCharDictioanry) {
     this.dictionaryPageSizeThreshold = dictPageSize;
     this.writerVersion = writerVersion;
     this.enableDictionary = enableDict;
+    this.useSingleCharDictioanry = useSingleCharDictioanry;
   }
 
   public static ValuesWriter getColumnDescriptorValuesWriter(int maxLevel, int initialSizePerCol, int pageSize) {
     if (maxLevel == 0) {
       return new DevNullValuesWriter();
     } else {
-      return new RunLengthBitPackingHybridValuesWriter(
-          getWidthFromMaxInt(maxLevel), initialSizePerCol, pageSize);
+      return new RunLengthBitPackingHybridValuesWriter(getWidthFromMaxInt(maxLevel), initialSizePerCol, pageSize);
     }
   }
 
@@ -112,7 +118,7 @@ public class ParquetProperties {
   private DictionaryValuesWriter dictionaryWriter(ColumnDescriptor path, int initialSizePerCol) {
     Encoding encodingForDataPage;
     Encoding encodingForDictionaryPage;
-    switch(writerVersion) {
+    switch (writerVersion) {
     case PARQUET_1_0:
       encodingForDataPage = PLAIN_DICTIONARY;
       encodingForDictionaryPage = PLAIN_DICTIONARY;
@@ -128,6 +134,9 @@ public class ParquetProperties {
     case BOOLEAN:
       throw new IllegalArgumentException("no dictionary encoding for BOOLEAN");
     case BINARY:
+      if(useSingleCharDictioanry) {
+        
+      }
       return new PlainBinaryDictionaryValuesWriter(dictionaryPageSizeThreshold, encodingForDataPage, encodingForDictionaryPage);
     case INT32:
       return new PlainIntegerDictionaryValuesWriter(dictionaryPageSizeThreshold, encodingForDataPage, encodingForDictionaryPage);
@@ -140,14 +149,15 @@ public class ParquetProperties {
     case FLOAT:
       return new PlainFloatDictionaryValuesWriter(dictionaryPageSizeThreshold, encodingForDataPage, encodingForDictionaryPage);
     case FIXED_LEN_BYTE_ARRAY:
-      return new PlainFixedLenArrayDictionaryValuesWriter(dictionaryPageSizeThreshold, path.getTypeLength(), encodingForDataPage, encodingForDictionaryPage);
+      return new PlainFixedLenArrayDictionaryValuesWriter(dictionaryPageSizeThreshold, path.getTypeLength(), encodingForDataPage,
+          encodingForDictionaryPage);
     default:
       throw new IllegalArgumentException("Unknown type " + path.getType());
     }
   }
 
   private ValuesWriter writerToFallbackTo(ColumnDescriptor path, int initialSizePerCol, int pageSize) {
-    switch(writerVersion) {
+    switch (writerVersion) {
     case PARQUET_1_0:
       return plainWriter(path, initialSizePerCol, pageSize);
     case PARQUET_2_0:
@@ -175,11 +185,9 @@ public class ParquetProperties {
   private ValuesWriter dictWriterWithFallBack(ColumnDescriptor path, int initialSizePerCol, int pageSize) {
     ValuesWriter writerToFallBackTo = writerToFallbackTo(path, initialSizePerCol, pageSize);
     if (enableDictionary) {
-      return FallbackValuesWriter.of(
-          dictionaryWriter(path, initialSizePerCol),
-          writerToFallBackTo);
+      return FallbackValuesWriter.of(dictionaryWriter(path, initialSizePerCol), writerToFallBackTo);
     } else {
-     return writerToFallBackTo;
+      return writerToFallBackTo;
     }
   }
 
@@ -192,7 +200,7 @@ public class ParquetProperties {
       if (writerVersion == WriterVersion.PARQUET_2_0) {
         return dictWriterWithFallBack(path, initialSizePerCol, pageSize);
       } else {
-       return writerToFallbackTo(path, initialSizePerCol, pageSize);
+        return writerToFallbackTo(path, initialSizePerCol, pageSize);
       }
     case BINARY:
     case INT32:
@@ -218,23 +226,12 @@ public class ParquetProperties {
     return enableDictionary;
   }
 
-  public ColumnWriteStore newColumnWriteStore(
-      MessageType schema,
-      PageWriteStore pageStore,
-      int pageSize) {
+  public ColumnWriteStore newColumnWriteStore(MessageType schema, PageWriteStore pageStore, int pageSize) {
     switch (writerVersion) {
     case PARQUET_1_0:
-      return new ColumnWriteStoreV1(
-          pageStore,
-          pageSize,
-          dictionaryPageSizeThreshold,
-          enableDictionary, writerVersion);
+      return new ColumnWriteStoreV1(pageStore, pageSize, dictionaryPageSizeThreshold, enableDictionary, writerVersion);
     case PARQUET_2_0:
-      return new ColumnWriteStoreV2(
-          schema,
-          pageStore,
-          pageSize,
-          new ParquetProperties(dictionaryPageSizeThreshold, writerVersion, enableDictionary));
+      return new ColumnWriteStoreV2(schema, pageStore, pageSize, new ParquetProperties(dictionaryPageSizeThreshold, writerVersion, enableDictionary));
     default:
       throw new IllegalArgumentException("unknown version " + writerVersion);
     }

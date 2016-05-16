@@ -193,7 +193,7 @@ class ColumnChunkPageWriteStore implements PageWriteStore {
       }
       encodings.clear();
       pageCount = 0;
-    }
+    } 
 
     @Override
     public long allocatedSize() {
